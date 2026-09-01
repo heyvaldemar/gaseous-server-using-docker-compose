@@ -15,8 +15,8 @@
 GASEOUS_SERVER_CONTAINER=$(docker ps -aqf "name=gaseous-server-gaseous-server")
 GASEOUS_SERVER_BACKUPS_CONTAINER=$(docker ps -aqf "name=gaseous-server-backups")
 GASEOUS_SERVER_DB_NAME="gaseous"
-GASEOUS_SERVER_DB_USER=$(docker exec $GASEOUS_SERVER_BACKUPS_CONTAINER printenv GASEOUS_SERVER_DB_USER)
-MARIADB_PASSWORD=$(docker exec $GASEOUS_SERVER_BACKUPS_CONTAINER printenv GASEOUS_SERVER_DB_PASSWORD)
+GASEOUS_SERVER_DB_USER=$(docker exec "$GASEOUS_SERVER_BACKUPS_CONTAINER" printenv GASEOUS_SERVER_DB_USER)
+MARIADB_PASSWORD=$(docker exec "$GASEOUS_SERVER_BACKUPS_CONTAINER" printenv GASEOUS_SERVER_DB_PASSWORD)
 BACKUP_PATH="/srv/gaseous-server-mariadb/backups/"
 
 echo "--> All available database backups:"
@@ -30,7 +30,7 @@ echo "--> Copy and paste the backup name from the list above to restore database
 echo "--> Example: gaseous-server-mariadb-backup-YYYY-MM-DD_hh-mm.gz"
 echo -n "--> "
 
-read SELECTED_DATABASE_BACKUP
+read -r SELECTED_DATABASE_BACKUP
 
 echo "--> $SELECTED_DATABASE_BACKUP was selected"
 

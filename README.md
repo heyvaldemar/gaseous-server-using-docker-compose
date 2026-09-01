@@ -1,174 +1,80 @@
-# Gaseous Server with Let's Encrypt Using Docker Compose
+# Gaseous Server + Traefik + Let's Encrypt — Docker Compose
 
-❗ Change variables in the `.env` to meet your requirements.
+[![Deployment Verification](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-❗ Edit the environment variables `GASEOUS_SERVER_IGDB_CLIENT_ID` and `GASEOUS_SERVER_IGDB_CLIENT_SECRET` to the values retrieved from your IGDB account:
+This repository deploys **Gaseous Server** — a self-hosted ROM manager and in-browser retro game player — behind **Traefik** with automatic **Let's Encrypt TLS**, backed by **MariaDB 11.4 LTS**, with scheduled **backups** (database + library data) and companion **restore scripts**.
 
-1. Sign up for a free Twitch account.
-2. Enable Two-Factor Authentication.
-3. Register your application in the Twitch Developer Portal:
-   - Name your application uniquely.
-   - Add a URL (it doesn’t have to be valid, just unique).
-   - Choose a category and set the Client Type to "Confidential."
-4. Complete the Captcha and click "Create."
-5. Click "Manage" next to your new app to view your client ID (similar to a username).
-6. Click "New Secret" to generate a secret key (similar to a password). Note: This secret is shown only once; make sure to record it.
+## Getting started
 
-💡 Note that the `.env` file should be in the same directory as `gaseous-server-traefik-letsencrypt-docker-compose.yml`.
+```bash
+# 1. Clone
+git clone https://github.com/heyvaldemar/gaseous-server-using-docker-compose
+cd gaseous-server-using-docker-compose
 
-Create networks for your services before deploying the configuration using the commands:
+# 2. Create the two Docker networks the stack expects
+docker network create traefik-network
+docker network create gaseous-server-network
 
-`docker network create traefik-network`
+# 3. Copy the environment template and fill in required values
+cp .env.example .env
+$EDITOR .env
+# ^ Required: two generated DB passwords, GASEOUS_SERVER_HOSTNAME,
+#   TRAEFIK_HOSTNAME, TRAEFIK_ACME_EMAIL, TRAEFIK_BASIC_AUTH.
 
-`docker network create gaseous-server-network`
+# 4. Deploy
+docker compose -f gaseous-server-traefik-letsencrypt-docker-compose.yml -p gaseous up -d
+```
 
-Deploy Gaseous Server using Docker Compose:
+First start initializes the database — give it a few minutes. **The first account registered in the web UI becomes the admin**, so open the site right after deploy. Add IGDB credentials in `.env` when you want covers and metadata.
 
-`docker compose -f gaseous-server-traefik-letsencrypt-docker-compose.yml -p gaseous-server up -d`
+### What success looks like
 
-## Backups
+```bash
+docker compose -f gaseous-server-traefik-letsencrypt-docker-compose.yml -p gaseous ps
+curl -fskL -o /dev/null -w "%{http_code}\n" "https://${GASEOUS_SERVER_HOSTNAME}/"
+```
 
-The `backups` container in the configuration is responsible for the following:
+### Common first-deploy issues
 
-1. **Database Backup**: Creates compressed backups of the MariaDB database using pg_dump.
-Customizable backup path, filename pattern, and schedule through variables like `MARIADB_BACKUPS_PATH`, `MARIADB_BACKUP_NAME`, and `BACKUP_INTERVAL`.
+- **Cert issuance fails.** DNS hasn't propagated or port 80 isn't reachable from the internet.
+- **504/timeouts in the first minutes.** Database initialization is still running; the healthcheck holds Traefik back until the server answers.
+- **Networks not found.** Step 2 was skipped.
 
-2. **Application Data Backup**: Compresses and stores backups of the application data on the same schedule. Controlled via variables such as `DATA_BACKUPS_PATH`, `DATA_BACKUP_NAME`, and `BACKUP_INTERVAL`.
+## Supply chain trust
 
-3. **Backup Pruning**: Periodically removes backups exceeding a specified age to manage storage. Customizable pruning schedule and age threshold with `MARIADB_BACKUP_PRUNE_DAYS` and `DATA_BACKUP_PRUNE_DAYS`.
+Three images — [`traefik`](https://hub.docker.com/_/traefik), [`gaseousgames/gaseousserver`](https://hub.docker.com/r/gaseousgames/gaseousserver), [`mariadb`](https://hub.docker.com/_/mariadb) — pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
-By utilizing this container, consistent and automated backups of the essential components of your instance are ensured. Moreover, efficient management of backup storage and tailored backup routines can be achieved through easy and flexible configuration using environment variables.
+The weekly `check-pin-freshness` CI job re-resolves each pin against its registry and compares the pinned versions against the latest upstream releases. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
-## gaseous-server-restore-database.sh Description
+## Production checklist
 
-This script facilitates the restoration of a database backup:
+- [ ] **Register the admin account immediately after deploy.**
+- [ ] **Strong secrets** — both DB passwords at 24+ random characters; regenerate the Traefik dashboard hash.
+- [ ] **Host-mount the backup volumes** for disaster recovery — the library data includes your ROMs.
+- [ ] **Mind the legal side** — only store ROMs you have the right to.
 
-1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
+## Backups and restore
 
-2. **List Backups**: Displays all available database backups located at the specified backup path.
+The `backups` container runs a `mariadb-dump | gzip` + `tar.gz`-of-library → prune → sleep loop (defaults: 30-minute warm-up, 24-hour interval, 7-day retention). Restore with the interactive scripts (`chmod +x *.sh` once): `./gaseous-server-restore-database.sh`, then `./gaseous-server-restore-application-data.sh`.
 
-3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
+## Testing
 
-4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
+The [Deployment Verification](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every Monday at 06:00 UTC: shellcheck + actionlint, Trivy scans of all three pinned images, the weekly freshness check, and a deploy-and-test job that boots the stack with ephemeral credentials and requires the UI to answer through Traefik.
 
-5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
+## Security Notes
 
-6. **Start Service**: Restarts the service after the restoration is completed.
+- Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
+- MariaDB listens only on the internal network.
 
-To make the `gaseous-server-restore-database.shh` script executable, run the following command:
+---
 
-`chmod +x gaseous-server-restore-database.sh`
-
-Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
-
-## gaseous-server-restore-application-data.sh Description
-
-This script is designed to restore the application data:
-
-1. **Identify Containers**: Similarly to the database restore script, it identifies the service and backups containers by name.
-
-2. **List Application Data Backups**: Displays all available application data backups at the specified backup path.
-
-3. **Select Backup**: Asks the user to copy and paste the desired backup name for application data restoration.
-
-4. **Stop Service**: Stops the service to prevent any conflicts during the restore process.
-
-5. **Restore Application Data**: Removes the current application data and then extracts the selected backup to the appropriate application data path.
-
-6. **Start Service**: Restarts the service after the application data has been successfully restored.
-
-To make the `gaseous-server-restore-application-data.sh` script executable, run the following command:
-
-`chmod +x gaseous-server-restore-application-data.sh`
-
-By utilizing this script, you can efficiently restore application data from an existing backup while ensuring proper coordination with the running service.
-
-## Author
-
-hey everyone,
-
-💾 I’ve been in the IT game for over 20 years, cutting my teeth with some big names like [IBM](https://www.linkedin.com/in/heyvaldemar/), [Thales](https://www.linkedin.com/in/heyvaldemar/), and [Amazon](https://www.linkedin.com/in/heyvaldemar/). These days, I wear the hat of a DevOps Consultant and Team Lead, but what really gets me going is Docker and container technology - I’m kind of obsessed!
-
-💛 I have my own IT [blog](https://www.heyvaldemar.com/), where I’ve built a [community](https://discord.gg/AJQGCCBcqf) of DevOps enthusiasts who share my love for all things Docker, containers, and IT technologies in general. And to make sure everyone can jump on this awesome DevOps train, I write super detailed guides (seriously, they’re foolproof!) that help even newbies deploy and manage complex IT solutions.
-
-🚀 My dream is to empower every single person in the DevOps community to squeeze every last drop of potential out of Docker and container tech.
-
-🐳 As a [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), I’m stoked to share my knowledge, experiences, and a good dose of passion for the tech. My aim is to encourage learning, innovation, and growth, and to inspire the next generation of IT whizz-kids to push Docker and container tech to its limits.
-
-Let’s do this together!
-
-## My 2D Portfolio
-
-🕹️ Click into [sre.gg](https://www.sre.gg/) — my virtual space is a 2D pixel-art portfolio inviting you to interact with elements that encapsulate the milestones of my DevOps career.
-
-## My Courses
-
-🎓 Dive into my [comprehensive IT courses](https://www.heyvaldemar.com/courses/) designed for enthusiasts and professionals alike. Whether you're looking to master Docker, conquer Kubernetes, or advance your DevOps skills, my courses provide a structured pathway to enhancing your technical prowess.
-
-🔑 [Each course](https://www.udemy.com/user/heyvaldemar/) is built from the ground up with real-world scenarios in mind, ensuring that you gain practical knowledge and hands-on experience. From beginners to seasoned professionals, there's something here for everyone to elevate their IT skills.
-
-## My Services
-
-💼 Take a look at my [service catalog](https://www.heyvaldemar.com/services/) and find out how we can make your technological life better. Whether it's increasing the efficiency of your IT infrastructure, advancing your career, or expanding your technological horizons — I'm here to help you achieve your goals. From DevOps transformations to building gaming computers — let's make your technology unparalleled!
-
-## Patreon Exclusives
-
-🏆 Join my [Patreon](https://www.patreon.com/heyvaldemar) and dive deep into the world of Docker and DevOps with exclusive content tailored for IT enthusiasts and professionals. As your experienced guide, I offer a range of membership tiers designed to suit everyone from newbies to IT experts.
-
-## My Recommendations
-
-📕 Check out my collection of [essential DevOps books](https://kit.co/heyvaldemar/essential-devops-books)\
-🖥️ Check out my [studio streaming and recording kit](https://kit.co/heyvaldemar/my-studio-streaming-and-recording-kit)\
-📡 Check out my [streaming starter kit](https://kit.co/heyvaldemar/streaming-starter-kit)
-
-## Follow Me
-
-🎬 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
-🐦 [X / Twitter](https://twitter.com/heyvaldemar)\
-🎨 [Instagram](https://www.instagram.com/heyvaldemar/)\
-🐘 [Mastodon](https://mastodon.social/@heyvaldemar)\
-🧵 [Threads](https://www.threads.net/@heyvaldemar)\
-🎸 [Facebook](https://www.facebook.com/heyvaldemarFB/)\
-🧊 [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
-🎥 [TikTok](https://www.tiktok.com/@heyvaldemar)\
-💻 [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
-📣 [daily.dev Squad](https://app.daily.dev/squads/devopscompass)\
-🧩 [LeetCode](https://leetcode.com/u/heyvaldemar/)\
-🐈 [GitHub](https://github.com/heyvaldemar)
-
-## Community of IT Experts
-
-👾 [Discord](https://discord.gg/AJQGCCBcqf)
-
-## Refill My Coffee Supplies
-
-💖 [PayPal](https://www.paypal.com/paypalme/heyvaldemarCOM)\
-🏆 [Patreon](https://www.patreon.com/heyvaldemar)\
-💎 [GitHub](https://github.com/sponsors/heyvaldemar)\
-🥤 [BuyMeaCoffee](https://www.buymeacoffee.com/heyvaldemar)\
-🍪 [Ko-fi](https://ko-fi.com/heyvaldemar)
-
-🌟 **Bitcoin (BTC):** bc1q2fq0k2lvdythdrj4ep20metjwnjuf7wccpckxc\
-🔹 **Ethereum (ETH):** 0x76C936F9366Fad39769CA5285b0Af1d975adacB8\
-🪙 **Binance Coin (BNB):** bnb1xnn6gg63lr2dgufngfr0lkq39kz8qltjt2v2g6\
-💠 **Litecoin (LTC):** LMGrhx8Jsx73h1pWY9FE8GB46nBytjvz8g
-
-## Disclaimer
-
-This repository contains a Docker Compose configuration that references third-party Docker images. **I am not the creator or maintainer of these images** and have no control over their content. By using this configuration, you acknowledge that:
-
-1. **You are solely responsible** for verifying the contents, licensing, and legality of any third-party Docker images referenced in this repository.
-2. This configuration does **not include any ROM, BIOS, or other copyrighted files**. You are responsible for ensuring that any files you use comply with applicable licensing and copyright laws.
-3. **No liability** is assumed for any legal issues or damages that arise from the use or misuse of this configuration and the images it references.
-
-Please review all relevant licensing terms and only proceed if you have the legal right to use all components.
+## About the maintainer
 
 <div align="center">
 
-### Show some 💜 by starring some of the [repositories](https://github.com/heyValdemar?tab=repositories)!
+**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** — Docker Captain · IBM Champion · AWS Community Builder
 
-![octocat](https://user-images.githubusercontent.com/10498744/210113490-e2fad07f-4488-4da8-a656-b9abbdd8cb26.gif)
+[YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1) · [Blog](https://heyvaldemar.com) · [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)
 
 </div>
-
-![footer](https://user-images.githubusercontent.com/10498744/210157572-1fca0242-8af2-46a6-bfa3-666ffd40ebde.svg)
