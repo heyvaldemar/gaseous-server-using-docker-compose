@@ -1,9 +1,9 @@
-# Gaseous Server + Traefik + Let's Encrypt — Docker Compose
+# Gaseous Server + Traefik + Let's Encrypt on Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository deploys **Gaseous Server** — a self-hosted ROM manager and in-browser retro game player — behind **Traefik** with automatic **Let's Encrypt TLS**, backed by **MariaDB 11.4 LTS**, with scheduled **backups** (database + library data) and companion **restore scripts**.
+This repository deploys Gaseous Server (a self-hosted ROM manager and in-browser retro game player) behind Traefik with automatic Let's Encrypt TLS, backed by MariaDB 11.4 LTS, with scheduled backups (database + library data) and companion restore scripts.
 
 ## Getting started
 
@@ -26,7 +26,7 @@ $EDITOR .env
 docker compose -f gaseous-server-traefik-letsencrypt-docker-compose.yml -p gaseous up -d
 ```
 
-First start initializes the database — give it a few minutes. **The first account registered in the web UI becomes the admin**, so open the site right after deploy. Add IGDB credentials in `.env` when you want covers and metadata.
+First start initializes the database. Give it a few minutes. The first account registered in the web UI becomes the admin, so open the site right after deploy. Add IGDB credentials in `.env` when you want covers and metadata.
 
 ### What success looks like
 
@@ -43,16 +43,16 @@ curl -fskL -o /dev/null -w "%{http_code}\n" "https://${GASEOUS_SERVER_HOSTNAME}/
 
 ## Supply chain trust
 
-Three images — [`traefik`](https://hub.docker.com/_/traefik), [`gaseousgames/gaseousserver`](https://hub.docker.com/r/gaseousgames/gaseousserver), [`mariadb`](https://hub.docker.com/_/mariadb) — pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
+Three images ([`traefik`](https://hub.docker.com/_/traefik), [`gaseousgames/gaseousserver`](https://hub.docker.com/r/gaseousgames/gaseousserver), [`mariadb`](https://hub.docker.com/_/mariadb)) pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
 The weekly `check-pin-freshness` CI job re-resolves each pin against its registry and compares the pinned versions against the latest upstream releases. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
 ## Production checklist
 
 - [ ] **Register the admin account immediately after deploy.**
-- [ ] **Strong secrets** — both DB passwords at 24+ random characters; regenerate the Traefik dashboard hash.
-- [ ] **Host-mount the backup volumes** for disaster recovery — the library data includes your ROMs.
-- [ ] **Mind the legal side** — only store ROMs you have the right to.
+- [ ] **Strong secrets**: both DB passwords at 24+ random characters; regenerate the Traefik dashboard hash.
+- [ ] **Host-mount the backup volumes** for disaster recovery: the library data includes your ROMs.
+- [ ] **Mind the legal side**: only store ROMs you have the right to.
 
 ## Backups and restore
 
@@ -62,7 +62,7 @@ The `backups` container runs a `mariadb-dump | gzip` + `tar.gz`-of-library → p
 
 The [Deployment Verification](https://github.com/heyvaldemar/gaseous-server-using-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every Monday at 06:00 UTC: shellcheck + actionlint, Trivy scans of all three pinned images, the weekly freshness check, and a deploy-and-test job that boots the stack with ephemeral credentials and requires the UI to answer through Traefik.
 
-## Security Notes
+## Security notes
 
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
 - MariaDB listens only on the internal network.
