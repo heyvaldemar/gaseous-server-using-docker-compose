@@ -27,6 +27,33 @@ volumes:
 services:
   mariadb:
     image: *mariadb-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only what this image's entrypoint
+    # needs (chown its data directory and drop to its service user).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    # Docker's default is ten seconds, then SIGKILL. MariaDB has InnoDB to
+    # flush on the way out; killed halfway, the next start does crash
+    # recovery. Sixty seconds, overridable in .env.
+    stop_grace_period: ${GASEOUS_SERVER_MARIADB_STOP_GRACE_PERIOD:-60s}
+    # Resource limits as .env-overridable defaults (e.g. GASEOUS_SERVER_MARIADB_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${GASEOUS_SERVER_MARIADB_MEMORY_LIMIT:-1g}
+          cpus: "${GASEOUS_SERVER_MARIADB_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${GASEOUS_SERVER_MARIADB_MEMORY_RESERVATION:-128m}
+          cpus: "${GASEOUS_SERVER_MARIADB_CPU_RESERVATION:-0.25}"
     volumes:
       - mariadb-data:/var/lib/mysql
     environment:
@@ -46,6 +73,19 @@ services:
 
   gaseous-server:
     image: *gaseous-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. GASEOUS_SERVER_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${GASEOUS_SERVER_MEMORY_LIMIT:-2g}
+          cpus: "${GASEOUS_SERVER_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: ${GASEOUS_SERVER_MEMORY_RESERVATION:-256m}
+          cpus: "${GASEOUS_SERVER_CPU_RESERVATION:-0.25}"
     volumes:
       - gaseous-server-data:${DATA_PATH:-/root/.gaseous-server}
     environment:
@@ -96,6 +136,23 @@ services:
 
   traefik:
     image: *traefik-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only the one a proxy needs to bind
+    # :80 and :443 as a non-root user.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          memory: ${TRAEFIK_MEMORY_LIMIT:-256m}
+          cpus: "${TRAEFIK_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${TRAEFIK_MEMORY_RESERVATION:-64m}
+          cpus: "${TRAEFIK_CPU_RESERVATION:-0.1}"
     command:
       # Set the log level (DEBUG, INFO, WARN, ERROR)
       - "--log.level=${TRAEFIK_LOG_LEVEL:-WARN}"
@@ -168,14 +225,67 @@ services:
 
   backups:
     image: *mariadb-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    deploy:
+      resources:
+        limits:
+          memory: ${GASEOUS_SERVER_BACKUPS_MEMORY_LIMIT:-256m}
+          cpus: "${GASEOUS_SERVER_BACKUPS_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${GASEOUS_SERVER_BACKUPS_MEMORY_RESERVATION:-32m}
+          cpus: "${GASEOUS_SERVER_BACKUPS_CPU_RESERVATION:-0.1}"
+    # The loop reports every outcome and never lets a failure look like a
+    # success. Three things it gets right that the previous version did not:
+    #   - `bash -c` with `set -o pipefail`, so a mariadb-dump error fails the
+    #     pipeline. Under plain `sh` the exit status is gzip's, and gzip is
+    #     perfectly happy compressing an error message into a valid archive.
+    #   - each outcome is logged with a timestamp and a byte count, so a
+    #     backup that stopped working is visible in `docker logs`.
+    #   - every file is written to <name>.partial and renamed once the write
+    #     succeeded, so the real name never exists unless the file is whole.
     command: >-
-      sh -c 'sleep $$BACKUP_INIT_SLEEP &&
+      bash -c 'set -o pipefail;
+      sleep "$$BACKUP_INIT_SLEEP";
       while true; do
-        mariadb-dump -h mariadb -u $$GASEOUS_SERVER_DB_USER -p"$$GASEOUS_SERVER_DB_PASSWORD" gaseous | gzip > "$$MARIADB_BACKUPS_PATH/$$MARIADB_BACKUP_NAME-$$(date '+%Y-%m-%d_%H-%M').gz" &&
-        tar -zcpf $$DATA_BACKUPS_PATH/$$DATA_BACKUP_NAME-$$(date "+%Y-%m-%d_%H-%M").tar.gz $$DATA_PATH &&
-        find $$MARIADB_BACKUPS_PATH -type f -mtime +$$MARIADB_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        find $$DATA_BACKUPS_PATH -type f -mtime +$$DATA_BACKUP_PRUNE_DAYS | xargs rm -f;
-        sleep $$BACKUP_INTERVAL; done'
+        STAMP="$$(date +%Y-%m-%d_%H-%M)";
+        DB_FILE="$$MARIADB_BACKUPS_PATH/$$MARIADB_BACKUP_NAME-$$STAMP.gz";
+        echo "[$$(date -Iseconds)] Starting database backup to $$DB_FILE";
+        if mariadb-dump -h mariadb -u $$GASEOUS_SERVER_DB_USER -p"$$GASEOUS_SERVER_DB_PASSWORD" gaseous | gzip > "$$DB_FILE.partial"; then
+          mv "$$DB_FILE.partial" "$$DB_FILE";
+          echo "[$$(date -Iseconds)] Database backup OK: $$DB_FILE ($$(stat -c %s "$$DB_FILE") bytes)";
+        else
+          echo "[$$(date -Iseconds)] Database backup FAILED - partial file kept as $$DB_FILE.failed for diagnosis" >&2;
+          mv "$$DB_FILE.partial" "$$DB_FILE.failed" 2>/dev/null || true;
+        fi;
+        DATA_FILE="$$DATA_BACKUPS_PATH/$$DATA_BACKUP_NAME-$$STAMP.tar.gz";
+        echo "[$$(date -Iseconds)] Starting data backup to $$DATA_FILE";
+        # GNU tar exits 1 when a live application changed a file mid-read;
+        # the archive is complete - only exit 2 is a real failure. No GNU-only
+        # flags: alpine images ship BusyBox tar.
+        tar -zcpf "$$DATA_FILE.partial" $$DATA_PATH; RC=$$?;
+        if [ "$$RC" -eq 0 ] || [ "$$RC" -eq 1 ]; then
+          mv "$$DATA_FILE.partial" "$$DATA_FILE";
+          echo "[$$(date -Iseconds)] Data backup OK: $$DATA_FILE ($$(stat -c %s "$$DATA_FILE") bytes)$$([ "$$RC" -eq 1 ] && echo " - some files changed while being read")";
+        else
+          echo "[$$(date -Iseconds)] Data backup FAILED - partial file kept as $$DATA_FILE.failed for diagnosis" >&2;
+          mv "$$DATA_FILE.partial" "$$DATA_FILE.failed" 2>/dev/null || true;
+        fi;
+        if [ "$${MARIADB_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$MARIADB_BACKUPS_PATH" -type f -name "$$MARIADB_BACKUP_NAME-*" -mtime "+$$MARIADB_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        if [ "$${DATA_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$DATA_BACKUPS_PATH" -type f -name "$$DATA_BACKUP_NAME-*" -mtime "+$$DATA_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        sleep "$$BACKUP_INTERVAL";
+      done'
     volumes:
       - gaseous-server-mariadb-backup:/var/lib/mysql
       - gaseous-server-data:${DATA_PATH:-/root/.gaseous-server}
