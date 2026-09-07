@@ -135,6 +135,9 @@ jobs:
           exit "$status"
 
       - name: Compare pinned Gaseous version against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
         run: |
           pin="$(grep -oE '\$\{GASEOUS_SERVER_IMAGE_TAG:-[^}]+\}' gaseous-server-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{GASEOUS_SERVER_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
@@ -151,6 +154,9 @@ jobs:
           echo "Gaseous pin ${pinned_version} matches the latest release"
 
       - name: Compare pinned Traefik minor against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
         run: |
           pin="$(grep -oE '\$\{TRAEFIK_IMAGE_TAG:-[^}]+\}' gaseous-server-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{TRAEFIK_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
