@@ -67,6 +67,17 @@ The [Deployment Verification](https://github.com/heyvaldemar/gaseous-server-usin
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
 - MariaDB listens only on the internal network.
 
+
+## Security notes
+
+- **Pre-rotation advisory.** Earlier revisions of this repository tracked a
+  `.env` carrying `GASEOUS_SERVER_DB_PASSWORD` and
+  `GASEOUS_SERVER_DB_ADMIN_PASSWORD`. The file is untracked now and `.env` is
+  gitignored, but the values are still in the git history and cannot be taken
+  out of it. **Rotate both** if this deployment ever used them.
+- `.env` carries only secrets and deliberate overrides; every image version is
+  pinned in the compose file. `.env.example` lists what has to be set.
+
 ---
 
 ## About the maintainer
