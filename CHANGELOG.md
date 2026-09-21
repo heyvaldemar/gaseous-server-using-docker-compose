@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`traefik:3.7` and `mariadb:11.4` repushed upstream; the pins follow them.** The same refresh was pushed on 2026-09-21 and reverted by fleet triage, which read the run's overall conclusion as a verdict on the change. Everything that verifies the deployment had passed — compose up, the HTTPS smoke test, all three Trivy scans, the linter — and the only red job was the freshness alarm, which goes red whenever any pin here lags upstream and says nothing about the digest just written. The triage no longer judges that way.
 
 ## [1.1.1] - 2026-09-14
 
