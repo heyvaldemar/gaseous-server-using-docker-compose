@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.1.2] - 2026-09-21
+
 ### Security
 
 - **`traefik:3.7` and `mariadb:11.4` repushed upstream; the pins follow them.** The same refresh was pushed on 2026-09-21 and reverted by fleet triage, which read the run's overall conclusion as a verdict on the change. Everything that verifies the deployment had passed — compose up, the HTTPS smoke test, all three Trivy scans, the linter — and the only red job was the freshness alarm, which goes red whenever any pin here lags upstream and says nothing about the digest just written. The triage no longer judges that way.
@@ -70,7 +74,8 @@ v1.2.0.
   that boots the stack and requires the UI to answer through Traefik.
 - `.env.example`; `.env` gitignored.
 
-[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/releases/tag/v1.0.0
