@@ -109,10 +109,6 @@ db_query() {
 db_ready() {
   docker exec "$BACKUPS_CONTAINER" mariadb-admin -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" ping > /dev/null 2>&1
 }
-db_restore() {
-  backups_sh "mariadb -h $DB_HOST -u $DB_USER -p\"$DB_PASS\" -e 'DROP DATABASE \`$DB_NAME\`; CREATE DATABASE \`$DB_NAME\`;' \
-    && gunzip -c $1 | mariadb -h $DB_HOST -u $DB_USER -p\"$DB_PASS\" $DB_NAME" 2>/dev/null
-}
 marker_create() { db_query "CREATE TABLE IF NOT EXISTS e2e_marker (id int PRIMARY KEY);" > /dev/null; }
 marker_insert() { db_query "CREATE TABLE IF NOT EXISTS restore_test (id int); INSERT INTO restore_test VALUES (1);" > /dev/null; }
 marker_count() { db_query "SELECT count(*) FROM restore_test;" | tr -d '[:space:]'; }
@@ -250,10 +246,31 @@ test_restore_roundtrip() {
   marker_insert
   before=$(marker_count)
   [[ "$before" -ge 1 ]] || { fail "marker insert failed: count=$before"; return 1; }
-  echo "  restoring the baseline"
-  db_restore "$baseline" || { fail "restore commands failed"; return 1; }
+  # THE SHIPPED SCRIPT, NOT A COPY OF ITS COMMANDS. This used to call its own
+  # db_restore, so the script a person runs on their worst day was never run
+  # here - and it was pointing at a directory the stack does not use.
+  echo "  restoring the baseline with ./gaseous-server-restore-database.sh"
+  COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" ./gaseous-server-restore-database.sh "$(basename "$baseline")" \
+    || { fail "the shipped restore script failed"; return 1; }
   marker_gone || { fail "marker still present after restore - restore was a no-op"; return 1; }
   echo "  marker absent after restore - the backup is restorable"
+}
+
+test_data_restore_roundtrip() {
+  # The same proof for application data, through the shipped script: a marker
+  # written after every existing archive must be gone once one is restored.
+  local data first
+  data="$(backups_sh 'printenv DATA_PATH' | tr -d '[:space:]')"
+  first="$(backups_sh "ls -1 ${DATA_BACKUPS_PATH%/}/${DATA_BACKUP_NAME}-*.tar.gz 2>/dev/null" | sort | head -n 1)"
+  [[ -n "$first" ]] || { fail "no application data archive to restore"; return 1; }
+  backups_sh "touch '$data/e2e-restore-marker'" || { fail "could not write the marker into $data"; return 1; }
+  echo "  restoring $(basename "$first") with ./gaseous-server-restore-application-data.sh"
+  COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" ./gaseous-server-restore-application-data.sh "$(basename "$first")" \
+    || { fail "the shipped restore script failed"; return 1; }
+  if backups_sh "test -e '$data/e2e-restore-marker'"; then
+    fail "marker still present after the data restore - it did not replace the data"; return 1
+  fi
+  echo "  marker absent after the data restore - the archive is restorable"
 }
 
 test_prune_removes_old() {
@@ -293,6 +310,7 @@ run_test test_backup_content_valid
 run_test test_data_backup_valid
 run_test test_backup_failure_detected
 run_test test_restore_roundtrip
+run_test test_data_restore_roundtrip
 run_test test_prune_removes_old
 
 echo

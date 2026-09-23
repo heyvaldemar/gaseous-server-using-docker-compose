@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **Both restore scripts pointed at directories the stack does not use.** The
+  database script listed `/srv/gaseous-server-mariadb/backups` while dumps are
+  written to `/srv/gaseous-mariadb/backups`; the data script listed, filtered
+  and cleared three paths that do not exist in this stack. Run on the day they
+  were needed, both would have offered nothing to restore. They now take every
+  path and name from the running backups container, accept the file name as an
+  argument, and CI runs them: a marker written after a backup must be gone once
+  that backup is restored, for the database and for the application data.
+- **The version check called any difference "behind"**, including being ahead.
+  It compares by order now, as the rest of the fleet does.
+
+### Added
+
+- **OpenSSF Scorecard**, which every public repository in the fleet carries.
 
 ## [1.2.0] - 2026-09-23
 

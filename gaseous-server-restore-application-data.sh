@@ -1,44 +1,60 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# gaseous-server-restore-application-data.sh [backup-file-name]
+#
+# Replaces Gaseous's application data with one of the archives the backups
+# service wrote.
+#
+#   ./gaseous-server-restore-application-data.sh               list and ask
+#   ./gaseous-server-restore-application-data.sh <file-name>   restore that one
+#
+# EVERY PATH AND NAME COMES FROM THE RUNNING BACKUPS CONTAINER, NOT FROM HERE.
+# The previous version listed /srv/gaseous-server-application-data/backups,
+# filtered on gaseous-server-application-data, and cleared
+# /home/gaseous/.gaseous-server - three paths the stack does not use. It would
+# have found no archive to offer. This asks the backup loop's own environment.
+#
+# CI runs this exact file, against a marker written after the archive it
+# restores, and requires the marker to be gone.
+set -Eeuo pipefail
 
-# # gaseous-server-restore-application-data.sh Description
-# This script is designed to restore the application data.
-# 1. **Identify Containers**: Similarly to the database restore script, it identifies the service and backups containers by name.
-# 2. **List Application Data Backups**: Displays all available application data backups at the specified backup path.
-# 3. **Select Backup**: Asks the user to copy and paste the desired backup name for application data restoration.
-# 4. **Stop Service**: Stops the service to prevent any conflicts during the restore process.
-# 5. **Restore Application Data**: Removes the current application data and then extracts the selected backup to the appropriate application data path.
-# 6. **Start Service**: Restarts the service after the application data has been successfully restored.
-# To make the `gaseous-server-restore-application-data.sh` script executable, run the following command:
-# `chmod +x gaseous-server-restore-application-data.sh`
-# By utilizing this script, you can efficiently restore application data from an existing backup while ensuring proper coordination with the running service.
+PROJECT="${COMPOSE_PROJECT_NAME:-gaseous}"
+APP_SERVICE="gaseous-server"
 
-GASEOUS_SERVER_CONTAINER=$(docker ps -aqf "name=gaseous-server-gaseous-server")
-GASEOUS_SERVER_BACKUPS_CONTAINER=$(docker ps -aqf "name=gaseous-server-backups")
-BACKUP_PATH="/srv/gaseous-server-application-data/backups/"
-RESTORE_PATH="/home/gaseous/.gaseous-server/"
-BACKUP_PREFIX="gaseous-server-application-data"
+cid() {
+  docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter "label=com.docker.compose.service=$1" | head -n 1
+}
+APP="$(cid "$APP_SERVICE")"; BKP="$(cid backups)"
+[ -n "$BKP" ] || { echo "error: no backups container in compose project '$PROJECT' (set COMPOSE_PROJECT_NAME)" >&2; exit 1; }
+[ -n "$APP" ] || { echo "error: no $APP_SERVICE container in compose project '$PROJECT'" >&2; exit 1; }
+[ "$(docker inspect -f '{{.State.Running}}' "$BKP")" = true ] || { echo "error: the backups container is not running" >&2; exit 1; }
 
-echo "--> All available application data backups:"
+env_of() { docker exec "$BKP" printenv "$1"; }
+DIR="$(env_of DATA_BACKUPS_PATH)"; NAME="$(env_of DATA_BACKUP_NAME)"; DATA="$(env_of DATA_PATH)"
+case "$DATA" in ""|/) echo "error: DATA_PATH is '$DATA'; refusing to clear it" >&2; exit 1 ;; esac
 
-for entry in $(docker container exec -it "$GASEOUS_SERVER_BACKUPS_CONTAINER" sh -c "ls $BACKUP_PATH")
-do
-  echo "$entry"
-done
+SELECTED="${1:-}"
+if [ -z "$SELECTED" ]; then
+  echo "Application data backups in $DIR:"
+  docker exec "$BKP" sh -c "ls -1 '$DIR' | grep -E '^$NAME-.*\\.tar\\.gz\$'" || { echo "  none found" >&2; exit 1; }
+  read -r -p "File name to restore: " SELECTED
+fi
+case "$SELECTED" in ""|*/*) echo "error: give a file name from the list, not a path" >&2; exit 1 ;; esac
+docker exec "$BKP" tar -tzf "$DIR/$SELECTED" >/dev/null \
+  || { echo "error: $DIR/$SELECTED is missing or does not open; nothing was changed" >&2; exit 1; }
 
-echo "--> Copy and paste the backup name from the list above to restore application data and press [ENTER]
---> Example: ${BACKUP_PREFIX}-backup-YYYY-MM-DD_hh-mm.tar.gz"
-echo -n "--> "
-
-read -r SELECTED_APPLICATION_BACKUP
-
-echo "--> $SELECTED_APPLICATION_BACKUP was selected"
-
-echo "--> Stopping service..."
-docker stop "$GASEOUS_SERVER_CONTAINER"
-
-echo "--> Restoring application data..."
-docker exec -it "$GASEOUS_SERVER_BACKUPS_CONTAINER" sh -c "rm -rf ${RESTORE_PATH}* && tar -zxpf ${BACKUP_PATH}${SELECTED_APPLICATION_BACKUP} -C /"
-echo "--> Application data recovery completed..."
-
-echo "--> Starting service..."
-docker start "$GASEOUS_SERVER_CONTAINER"
+echo "Stopping $APP_SERVICE so nothing writes while its data is replaced"
+docker stop "$APP" >/dev/null
+restart() { docker start "$APP" >/dev/null && echo "Started $APP_SERVICE"; }
+trap 'restart' EXIT
+echo "Restoring $SELECTED into $DATA"
+# The archive holds the data directory relative to / (the loop writes it with
+# -C /), so it is extracted at /; what was there first is removed so files that
+# did not exist at backup time do not survive the restore.
+if ! docker exec "$BKP" bash -c "set -euo pipefail
+    find '$DATA' -mindepth 1 -delete
+    tar -xzpf '$DIR/$SELECTED' -C /"; then
+  echo "error: the restore failed part-way; $DATA may be incomplete. Restore another archive before using Gaseous." >&2
+  exit 1
+fi
+echo "Restored $SELECTED into $DATA"

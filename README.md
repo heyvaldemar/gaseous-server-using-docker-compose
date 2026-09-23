@@ -60,7 +60,15 @@ The weekly `check-pin-freshness` CI job re-resolves each pin against its registr
 
 ## Backups and restore
 
-The `backups` container runs a `mariadb-dump | gzip` + `tar.gz`-of-library → prune → sleep loop (defaults: 30-minute warm-up, 24-hour interval, 7-day retention). Restore with the interactive scripts (`chmod +x *.sh` once): `./gaseous-server-restore-database.sh`, then `./gaseous-server-restore-application-data.sh`.
+The `backups` service dumps the database and archives the application data on its interval (`BACKUP_INTERVAL`, default 24h), reads each file back before naming it a backup, and prunes by age. Restore with the two scripts next to the compose file:
+
+```bash
+./gaseous-server-restore-database.sh            # list the database dumps and ask which
+./gaseous-server-restore-database.sh <file>     # restore that dump
+./gaseous-server-restore-application-data.sh    # the same for application data
+```
+
+Both stop Gaseous while they work and start it again afterwards, and both take every path and file name from the running backups container, so they cannot disagree with where the stack writes. Set `COMPOSE_PROJECT_NAME` if you started the stack with a `-p` other than `gaseous`. CI runs these exact scripts on every push: it writes a marker after a backup, restores the backup, and requires the marker to be gone.
 
 ## Testing
 
