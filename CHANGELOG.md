@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.2.0] - 2026-09-23
+
 ### Fixed
 
 - **A data backup was named a backup on tar's exit code alone.** It is read back with `tar -tzf` before it is renamed into place; an exit code has never been a statement about whether the archive opens.
