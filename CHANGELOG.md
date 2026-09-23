@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **A data backup was named a backup on tar's exit code alone.** It is read back with `tar -tzf` before it is renamed into place; an exit code has never been a statement about whether the archive opens.
+- **A Trivy scan that could not finish read as success.** `continue-on-error` hid exactly that case, and the SARIF upload after it was skipped too.
+- **The README carried two Security notes sections**, one of them saying the old passwords could not be taken out of the history. They can, and have been.
+
+### Changed
+
+- **Published.** This repository was private while an earlier `.env` carrying two database passwords sat in its history. That file has been removed from every commit before publication, and a full-history secret scan finds nothing; the earlier tags keep their versions.
+- **Checked daily**, as the security policy already said; the schedule was weekly.
+- **The freshness check has its own workflow, Pin Freshness**, so the badge says whether the stack boots rather than whether a pin is one version behind.
+- **`./update.sh`** moves a deployment between release tags, refuses a major version unattended and names any newly required variable before anything moves.
+- **Every CI run upgrades from the previous release** on the same volumes before the smoke tests, so a release is proven on data a deployed host already has.
+- **What the repository does not contain** is stated in the README: no ROM, BIOS or firmware, and no pointer to any.
 
 ## [1.1.2] - 2026-09-21
 

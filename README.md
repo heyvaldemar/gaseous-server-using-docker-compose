@@ -41,6 +41,10 @@ curl -fskL -o /dev/null -w "%{http_code}\n" "https://${GASEOUS_SERVER_HOSTNAME}/
 - **504/timeouts in the first minutes.** Database initialization is still running; the healthcheck holds Traefik back until the server answers.
 - **Networks not found.** Step 2 was skipped.
 
+## Updating
+
+`./update.sh` moves this checkout to the latest release tag — a combination this repository's CI has booted, upgraded from the previous release on the same volumes, and smoke-tested — and then runs `docker compose up -d`. It refuses to cross a major version unattended, refuses to run over local changes, and names any variable that became required since your version before anything has moved. `./update.sh --dry-run` says what would happen. Every release cut by fleet triage also carries what upstream changed, read from its release notes against this compose file.
+
 ## Supply chain trust
 
 Three images ([`traefik`](https://hub.docker.com/_/traefik), [`gaseousgames/gaseousserver`](https://hub.docker.com/r/gaseousgames/gaseousserver), [`mariadb`](https://hub.docker.com/_/mariadb)) pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
@@ -65,18 +69,12 @@ The [Deployment Verification](https://github.com/heyvaldemar/gaseous-server-usin
 ## Security notes
 
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
+- `.env` carries only secrets and deliberate overrides; every image version is pinned in the compose file. `.env.example` lists what has to be set.
 - MariaDB listens only on the internal network.
 
+## What this repository does not contain
 
-## Security notes
-
-- **Pre-rotation advisory.** Earlier revisions of this repository tracked a
-  `.env` carrying `GASEOUS_SERVER_DB_PASSWORD` and
-  `GASEOUS_SERVER_DB_ADMIN_PASSWORD`. The file is untracked now and `.env` is
-  gitignored, but the values are still in the git history and cannot be taken
-  out of it. **Rotate both** if this deployment ever used them.
-- `.env` carries only secrets and deliberate overrides; every image version is
-  pinned in the compose file. `.env.example` lists what has to be set.
+No ROM, BIOS, firmware or other copyrighted game file is included, linked to, or described how to obtain. Gaseous organises and plays a library you already own: dump your own cartridges and discs, and check that doing so is lawful where you live. This repository deploys the upstream [gaseous-server](https://github.com/gaseous-project/gaseous-server) image (AGPL-3.0) unmodified.
 
 ---
 
