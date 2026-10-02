@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.3.1] - 2026-10-02
+
 ### Security
 
 - **`mariadb:11.4` was rebuilt upstream**; the pin moved from `sha256:70cc072b29b4…` to `sha256:1292844148b3…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -124,7 +128,8 @@ v1.2.0.
   that boots the stack and requires the UI to answer through Traefik.
 - `.env.example`; `.env` gitignored.
 
-[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.2.1...v1.3.0
 [1.1.2]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.1.0...v1.1.1
