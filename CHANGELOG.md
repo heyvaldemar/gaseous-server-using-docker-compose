@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.3.7] - 2026-10-22
+
 ### Security
 
 - **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:6d3e069ee484…` to `sha256:22a759fb803a…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -169,7 +173,8 @@ v1.2.0.
   that boots the stack and requires the UI to answer through Traefik.
 - `.env.example`; `.env` gitignored.
 
-[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/heyvaldemar/gaseous-server-using-docker-compose/compare/v1.3.3...v1.3.4
